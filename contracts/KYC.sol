@@ -6,6 +6,7 @@ contract KYC {
         string username;
         string dataHash;
         address bankAddress;
+        uint upvotes;
     }
 
     struct Bank {
@@ -28,6 +29,7 @@ contract KYC {
     
     mapping(string => Customer) public customers;
     mapping(string => Request) public requests;
+    mapping(string => Bank) public banks;
     
     /*Customer[] public uniqCid;
     Bank[] public banks;
@@ -84,29 +86,40 @@ contract KYC {
         return 1;
     }
     
-    /*function addRequest(string memory _username, string memory _data , address _bankAddress) public returns (uint) {
-        // checkig whether username is already taken or not
-        if(empty(customers[_username].dataHash)) {
-           return 0; 
-        }
-        
-        Customer memory customer = Customer(_username, _data, _bankAddress);
-        customers[_username] = customer;
-        
-    }*
+    function modifyRequest(string memory _username, string memory _dataHash) public returns (uint) {
+        require(!isEmpty(_username), 'username required');
+        require(!isEmpty(_dataHash), 'dataHash required');
 
-    function addCustomer(string memory _username, string memory _data) public returns (uint){
-        for(uint i=0; i < customers.length; i++) {
-            if(equalsTo(_username, customers[i].username) && equalsTo(_data, customers[i].dataHash)) {
-                return 0;                               
-            }
+        if(isEmpty(requests[_username].dataHash)){
+            revert('request not found');
         }
 
-        customers[customers.length-1] = Customer(_username, _data, address(0));
-        customers.length++;
+        requests[_username].dataHash = _dataHash;
         return 1;
-    } /
+    }
+    
+    function deleteRequest(string memory _username) public returns (uint) {
+        require(!isEmpty(_username), 'username required');
+        
+        if(isEmpty(requests[_username].dataHash)){
+            revert('request not found');
+        }
 
+        delete requests[_username];
+        return 1;
+           
+    }
+
+    function upvote(string memory _username) public returns (uint) {
+        require(!isEmpty(_username), 'username required');
+        
+        if(isEmpty(customers[_username].dataHash)){
+            revert('customer not found');
+        }
+        customers[_username].upvotes++;
+        return 1;
+
+    } 
     /*Helper Functions*/
 
     function equalsTo(string memory _param1, string memory _param2) internal pure returns (bool) {
