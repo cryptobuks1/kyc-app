@@ -1,5 +1,6 @@
 pragma solidity^0.5.0;
 
+
 contract KYC {
 
     struct Customer {
@@ -7,11 +8,14 @@ contract KYC {
         string dataHash;
         address bankAddress;
         uint upvotes;
+        uint rating;
     }
 
     struct Bank {
         string name;
-        address bankAddress;
+        address ethAddress;
+        uint ratings;
+        uint kycCount;
         string regNumber;
     }
 
@@ -19,6 +23,7 @@ contract KYC {
         string username;
         string dataHash;
         address bankAddress;
+        bool isAllowed;
     }
 
     address admin;
@@ -27,9 +32,9 @@ contract KYC {
     mapping(address => Bank) private banks;
     mapping(address => Request) private requests;*/
     
-    mapping(string => Customer) public customers;
-    mapping(string => Request) public requests;
-    mapping(string => Bank) public banks;
+    mapping(string => Customer) private customers;
+    mapping(string => Request) private requests;
+    mapping(string => Bank) private banks;
     
     /*Customer[] public uniqCid;
     Bank[] public banks;
@@ -39,7 +44,10 @@ contract KYC {
     constructor() public {
         admin = msg.sender;
     }
-    
+    modifier onlyAdmin {
+        require(msg.sender == admin);
+        _;
+    }
     function addCustomer(string memory _username, string memory _dataHash) public returns (uint) {
         require(!isEmpty(_username), 'username required');
         require(!isEmpty(_dataHash), 'dataHash required');
@@ -47,7 +55,7 @@ contract KYC {
         if(!isEmpty(customers[_username].dataHash)) {
             revert('already exists');
         }
-        Customer memory customer = Customer(_username, _dataHash, msg.sender);
+        Customer memory customer = Customer(_username, _dataHash, msg.sender, 0, 0);
         customers[_username] = customer;
         return 1;
     }
@@ -81,7 +89,7 @@ contract KYC {
         if(!isEmpty(requests[_username].dataHash)) {
             revert('already exists');
         }
-        Request memory request = Request(_username, _dataHash, msg.sender);
+        Request memory request = Request(_username, _dataHash, msg.sender, false);
         requests[_username] = request;
         return 1;
     }
@@ -120,6 +128,27 @@ contract KYC {
         return 1;
 
     } 
+
+    function addBank(string memory _bankName, address _bankAddress, string memory _regNumber) public onlyAdmin returns (uint) {
+        require(!isEmpty(_bankName), 'bank name required');
+        require(!isEmpty(_regNumber), 'register no. required');
+
+        Bank memory bank = Bank(_bankName, _bankAddress, 0, 0, _regNumber);
+        banks[_bankName] = bank;
+        return 1;
+    }
+
+    function removeBank(string memory _bankName) public onlyAdmin returns (uint) {
+        require(!isEmpty(_bankName), 'bank name required');
+
+        if(isEmpty(banks[_bankName].name)){
+            revert('bank not found');
+        }
+
+        delete banks[_bankName];
+        return 1;
+    }
+    
     /*Helper Functions*/
 
     function equalsTo(string memory _param1, string memory _param2) internal pure returns (bool) {
@@ -143,5 +172,5 @@ contract KYC {
             return true;
         return false;
     }
-    
+
 }
