@@ -1,174 +1,288 @@
-pragma solidity^0.5.0;
+pragma solidity ^0.5.9;
 
+contract kyc {
 
-contract KYC {
-
+  
+    address admin;
+    
+    /*
+    Struct for a customer
+     */
     struct Customer {
-        string username;
-        string dataHash;
-        address bankAddress;
-        uint upvotes;
-        uint rating;
+        string userName;   //unique
+        string data_hash;  //unique
+        uint8 upvotes;
+        uint8 ratings;
+        address bank;
+        string password;
     }
 
+    /*
+    Struct for a Bank
+     */
     struct Bank {
-        string name;
-        address ethAddress;
-        uint ratings;
-        uint kycCount;
-        string regNumber;
+        address ethAddress;   //unique  
+        string bankName;
+        uint8 kycCount;
+        uint8 ratings;
+        string regNumber;       //unique   
     }
 
-    struct Request {
-        string username;
-        string dataHash;
-        address bankAddress;
+    /*
+    Struct for a KYC Request
+     */
+    struct KYCRequest {
+        string userName;     
+        string data_hash;  //unique
+        address bank;
         bool isAllowed;
     }
 
-    address admin;
+    /*
+    Mapping a customer's username to the Customer struct
+    We also keep an array of all keys of the mapping to be able to loop through them when required.
+     */
+    mapping(string => Customer) customers;
+    string[] customerNames;
 
-    /*mapping(address => Customer) private customers;
-    mapping(address => Bank) private banks;
-    mapping(address => Request) private requests;*/
-    
-    mapping(string => Customer) private customers;
-    mapping(string => Request) private requests;
-    mapping(string => Bank) private banks;
-    
-    /*Customer[] public uniqCid;
-    Bank[] public banks;
-    Request[] public uniqRid;
-    Request[] public validKyc;*/
+    /*
+    Mapping a bank's address to the Bank Struct
+    We also keep an array of all keys of the mapping to be able to loop through them when required.
+     */
+    mapping(address => Bank) banks;
+    address[] bankAddresses;
 
+    /*
+    Mapping a customer's Data Hash to KYC request captured for that customer.
+    This mapping is used to keep track of every kycRequest initiated for every customer by a bank.
+     */
+    mapping(string => KYCRequest) kycRequests;
+    string[] customerDataList;
+
+    /*
+    Mapping a customer's user name with a bank's address
+    This mapping is used to keep track of every upvote given by a bank to a customer
+     */
+    mapping(string => mapping(address => uint256)) upvotes;
+
+    /**
+     * Constructor of the contract.
+     * We save the contract's admin as the account which deployed this contract.
+     */
     constructor() public {
         admin = msg.sender;
     }
-    modifier onlyAdmin {
-        require(msg.sender == admin);
-        _;
-    }
-    function addCustomer(string memory _username, string memory _dataHash) public returns (uint) {
-        require(!isEmpty(_username), 'username required');
-        require(!isEmpty(_dataHash), 'dataHash required');
+
+    /**
+     * Record a new KYC request on behalf of a customer
+     * The sender of message call is the bank itself
+     * @param  {string} _userName The name of the customer for whom KYC is to be done
+     * @param  {address} _bankEthAddress The ethAddress of the bank issuing this request
+     * @return {bool}        True if this function execution was successful
+     */
+    function addKycRequest(string memory _userName, string memory _customerData) public returns (uint8) {
+        // Check that the user's KYC has not been done before, the Bank is a valid bank and it is allowed to perform KYC.
+        require(kycRequests[_customerData].bank == address(0), "This user already has a KYC request with same data in process.");
+        //bytes memory uname = new bytes(bytes(_userName));
+        // Save the timestamp for this KYC request.
+        kycRequests[_customerData].data_hash = _customerData;
+        kycRequests[_customerData].userName = _userName;
+        kycRequests[_customerData].bank = msg.sender;
+        (string memory bankName, uint8 kycCount, uint8 ratings, string memory regNumber) = getBank(msg.sender);
+        (ratings*100 < 5*10) ? kycRequests[_customerData].isAllowed = false : kycRequests[_customerData].isAllowed = true;
         
-        if(!isEmpty(customers[_username].dataHash)) {
-            revert('already exists');
-        }
-        Customer memory customer = Customer(_username, _dataHash, msg.sender, 0, 0);
-        customers[_username] = customer;
+        customerDataList.push(_customerData);
         return 1;
+    }
+
+    /**
+     * Add a new customer
+     * @param {string} _userName Name of the customer to be added
+     * @param {string} _hash Hash of the customer's ID submitted for KYC
+     */
+    function addCustomer(string memory _userName, string memory _customerData) public returns (uint8) {
+        require(customers[_userName].bank == address(0), "This customer is already present, please call modifyCustomer to edit the customer data");
+        customers[_userName].userName = _userName;
+        customers[_userName].data_hash = _customerData;
+        customers[_userName].bank = msg.sender;
+        customers[_userName].upvotes = 0;
+        customers[_userName].ratings = 0;
+        customers[_userName].password = "";
+        customerNames.push(_userName);
+        return 1;
+    }
+
+    /**
+     * Remove KYC request
+     * @param  {string} _userName Name of the customer
+     * @return {uint8}         A 0 indicates failure, 1 indicates success
+     */
+    function removeKYCRequest(string memory _userName) public returns (uint8) {
+        uint8 i=0;
+        for (uint256 i = 0; i< customerDataList.length; i++) {
+            if (stringsEquals(kycRequests[customerDataList[i]].userName,_userName)) {
+                delete kycRequests[customerDataList[i]];
+                for(uint j = i+1;j < customerDataList.length;j++) 
+                { 
+                    customerDataList[j-1] = customerDataList[j];
+                }
+                customerDataList.length --;
+                i=1;
+            }
+        }
+        return i; // 0 is returned if no request with the input username is found.
+    }
+
+    /**
+     * Remove customer information
+     * @param  {string} _userName Name of the customer
+     * @return {uint8}         A 0 indicates failure, 1 indicates success
+     */
+    function removeCustomer(string memory _userName) public returns (uint8) {
+            for(uint i = 0;i < customerNames.length;i++) 
+            { 
+                if(stringsEquals(customerNames[i],_userName))
+                {
+                    delete customers[_userName];
+                    for(uint j = i+1;j < customerNames.length;j++) 
+                    {
+                        customerNames[j-1] = customerNames[j];
+                    }
+                    customerNames.length--;
+                    return 1;
+                }
+                
+            }
+            return 0;
     }
     
-    function modifyCustomer(string memory _username, string memory _dataHash) public returns (uint) {
-        require(!isEmpty(_username), 'username required');
-        require(!isEmpty(_dataHash), 'dataHash required');
-        
-        if(isEmpty(customers[_username].dataHash)) {
-            revert('user not found');
-        }
-        
-        customers[_username].dataHash = _dataHash;
-        return 1;
+    /**
+     * View customer information
+     * @param  {public} _userName Name of the customer
+     * @return {Customer}         The customer struct as an object
+     */
+    function viewCustomer(string memory _userName) public view returns (string memory, string memory, uint8, address) {
+        //condition to check whetther customer has set the password or not
+        return (customers[_userName].userName, customers[_userName].data_hash, customers[_userName].upvotes, customers[_userName].bank);
     }
     
-    function deleteCustomer(string memory _username) public returns (uint) {
-        require(!isEmpty(_username), 'username required');
+    /**
+     * Add a new upvote from a bank
+     * @param {public} _userName Name of the customer to be upvoted
+     */
+    function upvoteCustomer(string memory _userName) public returns (uint8) {
+        for(uint i = 0;i < customerNames.length;i++) 
+            { 
+                if(stringsEquals(customerNames[i],_userName))
+                {
+                    customers[_userName].upvotes++;
+                    upvotes[_userName][msg.sender] = now;//storing the timestamp when vote was casted, not required though, additional
+                    return 1;
+                }
+            
+            }
+            return 0;
         
-        if(isEmpty(customers[_username].dataHash)) {
-            revert('user not found');
-        }
-        delete customers[_username];
-        return 1;
     }
     
-    function addRequest(string memory _username, string memory _dataHash) public returns (uint) {
-        require(!isEmpty(_username),'username required');
-        require(!isEmpty(_dataHash), 'dataHash required');
-        
-        if(!isEmpty(requests[_username].dataHash)) {
-            revert('already exists');
+    function upvoteBank(address _bankEthAddress) public returns (uint8) {
+        for(uint i = 0; i < bankAddresses.length; i++) {
+            if(stringsEquals(bankAddresses[i], _bankEthAddress)) {
+                banks[_bankEthAddress].ratings++;
+                return 1;
+            }
         }
-        Request memory request = Request(_username, _dataHash, msg.sender, false);
-        requests[_username] = request;
-        return 1;
+        return 0;
     }
     
-    function modifyRequest(string memory _username, string memory _dataHash) public returns (uint) {
-        require(!isEmpty(_username), 'username required');
-        require(!isEmpty(_dataHash), 'dataHash required');
-
-        if(isEmpty(requests[_username].dataHash)){
-            revert('request not found');
+    function getCustometRating(stringsEquals memory _userName, string memory _customerData) public view returns (uint) {
+        for(uint i=0; i < customerNames.length; i++) {
+            if(stringsEquals(customerNames[i], _userName)) {
+                return customers[_userName].ratings;
+            }
         }
+        
+        return 0;
+    }
 
-        requests[_username].dataHash = _dataHash;
-        return 1;
+    /**
+     * Edit customer information
+     * @param  {public} _userName Name of the customer
+     * @param  {public} _hash New hash of the updated ID provided by the customer
+     * @return {uint8}         A 0 indicates failure, 1 indicates success
+     */
+    function modifyCustomer(string memory _userName, string memory _newcustomerData) public returns (uint8) {
+        for(uint i = 0;i < customerNames.length;i++) 
+            { 
+                if(stringsEquals(customerNames[i],_userName))
+                {
+                    customers[_userName].data_hash = _newcustomerData;
+                    customers[_userName].bank = msg.sender;   
+                    return 1;
+                }
+            
+            }
+            return 0;
+    }
+
+    
+    
+    function getBank(address _bankEthAddress) public returns (string memory, uint8, uint8, string memory) {
+        return (banks[_bankEthAddress].bankName,  banks[_bankEthAddress].kycCount, banks[_bankEthAddress].ratings, banks[_bankEthAddress].regNumber);
     }
     
-    function deleteRequest(string memory _username) public returns (uint) {
-        require(!isEmpty(_username), 'username required');
-        
-        if(isEmpty(requests[_username].dataHash)){
-            revert('request not found');
+    function getAccessHistoryForCustomer(string memory _userName, string memory _userData) public view returns (address){
+        for(uint i=0; i < customerNames.length; i++) {
+            if(stringsEquals(customerNmes[i], _userName)) {
+                return customers[_userName].bank;
+            }
         }
-
-        delete requests[_username];
-        return 1;
-           
-    }
-
-    function upvote(string memory _username) public returns (uint) {
-        require(!isEmpty(_username), 'username required');
-        
-        if(isEmpty(customers[_username].dataHash)){
-            revert('customer not found');
-        }
-        customers[_username].upvotes++;
-        return 1;
-
-    } 
-
-    function addBank(string memory _bankName, address _bankAddress, string memory _regNumber) public onlyAdmin returns (uint) {
-        require(!isEmpty(_bankName), 'bank name required');
-        require(!isEmpty(_regNumber), 'register no. required');
-
-        Bank memory bank = Bank(_bankName, _bankAddress, 0, 0, _regNumber);
-        banks[_bankName] = bank;
-        return 1;
-    }
-
-    function removeBank(string memory _bankName) public onlyAdmin returns (uint) {
-        require(!isEmpty(_bankName), 'bank name required');
-
-        if(isEmpty(banks[_bankName].name)){
-            revert('bank not found');
-        }
-
-        delete banks[_bankName];
-        return 1;
+        return address(0);
     }
     
-    /*Helper Functions*/
+    function setPassword(string memory _userName, string memory _password) public returns (bool) {
+        for(uint i = 0;i < customerNames.length;i++)  { 
+            if(stringsEquals(customerNames[i],_userName))
+            {
+                customers[_userName].password = _password;
+                return 1;
+            }
+        
+        }
+        return 0;
+    }
+    
+    /*function getRequest(address _bankEthAddress) public view returns () {
+        for(uint i = 0; i < kycRequests.length; i++) {
+            
+        }
+    }*/
+    
+    
 
-    function equalsTo(string memory _param1, string memory _param2) internal pure returns (bool) {
-        bytes memory param1 = bytes(_param1);
-        bytes memory param2 = bytes(_param2);
-
-        if(param1.length != param2.length) {
+// if you are using string, you can use the following function to compare two strings
+// function to compare two string value
+// This is an internal fucntion to compare string values
+// @Params - String a and String b are passed as Parameters
+// @return - This function returns true if strings are matched and false if the strings are not matching
+    function stringsEquals(string storage _a, string memory _b) internal view returns (bool) {
+        bytes storage a = bytes(_a);
+        bytes memory b = bytes(_b); 
+        if (a.length != b.length)
             return false;
-        }
-
-        for(uint i=0; i< param1.length; i++) {
-            if(param1[i] != param2[i]) 
+        // @todo unroll this loop
+        for (uint i = 0; i < a.length; i ++)
+        {
+            if (a[i] != b[i])
                 return false;
         }
         return true;
     }
-
-    function isEmpty(string memory _param1) internal pure returns (bool) {
-        bytes memory param1 = bytes(_param1);
-        if(param1.length == 0)
+    
+    // This is an internal fucntion to check whether variable contain some value or not
+    function isEmpty(string memory _param) internal view returns (bool) {
+        bytes memory param = bytes(_param);
+        if(param.length == 0) 
             return true;
         return false;
     }
